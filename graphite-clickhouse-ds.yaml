@@ -1,0 +1,19 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: Graphite
+    orgId: 1
+
+datasources:
+  - name: clickhouse
+    type: graphite
+    access: server
+    url: http://carbonapi:7070
+    isDefault: true
+    jsonData:
+      graphiteVersion: '1.1'
+      tlsAuth: false
+      tlsAuthWithCACert: false
+    version: 1
+    # <bool> allow users to edit datasources from the UI.
+    editable: false

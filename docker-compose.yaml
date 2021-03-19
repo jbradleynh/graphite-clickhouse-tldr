@@ -1,36 +1,108 @@
-clickhouse:
-  image: yandex/clickhouse-server:19.6.2.11
-  volumes:
-  - "./rollup.xml:/etc/clickhouse-server/config.d/rollup.xml"
-  - "./init.sql:/docker-entrypoint-initdb.d/init.sql"
-  - "./data/clickhouse/data:/var/lib/clickhouse/data"
-  - "./data/clickhouse/metadata:/var/lib/clickhouse/metadata"
-carbon-clickhouse:
-  image: lomik/carbon-clickhouse:v0.10.2
-  volumes:
-  - "./data/carbon-clickhouse:/data/carbon-clickhouse"
-  - "./carbon-clickhouse.conf:/etc/carbon-clickhouse/carbon-clickhouse.conf"
-  ports:
-  - "2003:2003" # plain tcp
-  - "2003:2003/udp" # plain udp
-  - "2004:2004" # pickle
-  - "2006:2006" # prometheus remote write
-  links:
-  - clickhouse
-graphite-clickhouse:
-  image: lomik/graphite-clickhouse:v0.11.1
-  volumes:
-  - "./rollup.xml:/etc/graphite-clickhouse/rollup.xml"
-  - "./graphite-clickhouse.conf:/etc/graphite-clickhouse/graphite-clickhouse.conf"
-  links:
-  - clickhouse
-graphite-web:
-  image: graphiteapp/graphite-statsd:1.1.3
-  volumes:
-  - "./graphiteweb_entrypoint.sh:/entrypoint.sh"
-  - "./graphiteweb.conf:/opt/graphite/webapp/graphite/local_settings.py"
-  entrypoint: /entrypoint.sh
-  links:
-    - graphite-clickhouse
-  ports:
-  - "80:80" # http ui
+version: '3.1'
+
+services:
+  clickhouse:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - "./clickhouse-config.d/rollup.xml:/etc/clickhouse-server/config.d/rollup.xml"
+      - "./clickhouse-config.d/prometheus.xml:/etc/clickhouse-server/config.d/prometheus.xml"
+      - "./init.sql:/docker-entrypoint-initdb.d/init.sql"
+      - "./data/clickhouse/data:/var/lib/clickhouse/data"
+      - "./data/clickhouse/metadata:/var/lib/clickhouse/metadata"
+    ports:
+      - "8001:8001" # prometheus /metrics endpoint
+
+  carbon-clickhouse:
+    image: lomik/carbon-clickhouse:v0.10.2
+    volumes:
+    - "./data/carbon-clickhouse:/data/carbon-clickhouse"
+    - "./carbon-clickhouse.conf:/etc/carbon-clickhouse/carbon-clickhouse.conf"
+    ports:
+    - "2003:2003" # plain tcp
+    - "2003:2003/udp" # plain udp
+    - "2004:2004" # pickle
+    - "2006:2006" # prometheus remote write
+    links:
+    - clickhouse
+
+  graphite-clickhouse:
+    image: lomik/graphite-clickhouse:v0.11.1
+    volumes:
+    - "./clickhouse-config.d/rollup.xml:/etc/graphite-clickhouse/rollup.xml"
+    - "./graphite-clickhouse.conf:/etc/graphite-clickhouse/graphite-clickhouse.conf"
+    links:
+    - clickhouse
+
+  carbonapi:
+    image: carbonapi:latest
+    volumes:
+    - "./carbonapi.yml:/etc/carbonapi.yml"
+    ports:
+    - "7070:7070" # http ui
+    links:
+      - graphite-clickhouse
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+    - "3000:3000" # main entry
+    environment:
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+    volumes:
+    - "./graphite-clickhouse-ds.yaml:/etc/grafana/provisioning/datasources/graphite-clickhouse-ds.yaml"
+    links:
+      - carbonapi
+
+  # https://hub.docker.com/_/zookeeper
+  zoo1:
+    image: zookeeper
+    restart: always
+    hostname: zoo1
+    ports:
+      - 2181:2181
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181 server.2=zoo2:2888:3888;2181 server.3=zoo3:2888:3888;2181
+      ZOO_TICK_TIME: 2000
+      ZOO_INIT_LIMIT: 300
+      ZOO_SYNC_LIMIT: 10
+      ZOO_MAX_CLIENT_CNXNS: 2000
+      ZOO_AUTOPURGE_PURGEINTERVAL: 1
+      ZOO_AUTOPURGE_SNAPRETAINCOUNT: 10
+      ZOO_4LW_COMMANDS_WHITELIST: conf,cons,crst,dump,envi,mntr,ruok,srst,srvr,stat,wchc,wchp,wchs
+
+  zoo2:
+    image: zookeeper
+    restart: always
+    hostname: zoo2
+    ports:
+      - 2182:2181
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=zoo1:2888:3888;2181 server.2=0.0.0.0:2888:3888;2181 server.3=zoo3:2888:3888;2181
+      ZOO_TICK_TIME: 2000
+      ZOO_INIT_LIMIT: 300
+      ZOO_SYNC_LIMIT: 10
+      ZOO_MAX_CLIENT_CNXNS: 2000
+      ZOO_AUTOPURGE_PURGEINTERVAL: 1
+      ZOO_AUTOPURGE_SNAPRETAINCOUNT: 10
+      ZOO_4LW_COMMANDS_WHITELIST: conf,cons,crst,dump,envi,mntr,ruok,srst,srvr,stat,wchc,wchp,wchs
+
+  zoo3:
+    image: zookeeper
+    restart: always
+    hostname: zoo3
+    ports:
+      - 2183:2181
+    environment:
+      ZOO_MY_ID: 3
+      ZOO_SERVERS: server.1=zoo1:2888:3888;2181 server.2=zoo2:2888:3888;2181 server.3=0.0.0.0:2888:3888;2181
+      ZOO_TICK_TIME: 2000
+      ZOO_INIT_LIMIT: 300
+      ZOO_SYNC_LIMIT: 10
+      ZOO_MAX_CLIENT_CNXNS: 2000
+      ZOO_AUTOPURGE_PURGEINTERVAL: 1
+      ZOO_AUTOPURGE_SNAPRETAINCOUNT: 10
+      ZOO_4LW_COMMANDS_WHITELIST: conf,cons,crst,dump,envi,mntr,ruok,srst,srvr,stat,wchc,wchp,wchs
