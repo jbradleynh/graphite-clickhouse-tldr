@@ -1,4 +1,4 @@
-version: '3.1'
+version: '3.9'
 
 services:
   clickhouse:
@@ -34,9 +34,11 @@ services:
     - clickhouse
 
   carbonapi:
-    image: carbonapi:latest
+    # image: carbonapi:latest
+    build:
+      context: ./carbonapi
     volumes:
-    - "./carbonapi.yml:/etc/carbonapi.yml"
+    - "./carbonapi/carbonapi.yml:/etc/carbonapi.yml"
     ports:
     - "7070:7070" # http ui
     links:
