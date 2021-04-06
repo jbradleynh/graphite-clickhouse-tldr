@@ -1,16 +1,39 @@
 version: '3.9'
 
 services:
-  clickhouse:
+  clickhouse1:
     image: yandex/clickhouse-server:latest
     volumes:
       - "./clickhouse-config.d/rollup.xml:/etc/clickhouse-server/config.d/rollup.xml"
       - "./clickhouse-config.d/prometheus.xml:/etc/clickhouse-server/config.d/prometheus.xml"
-      - "./init.sql:/docker-entrypoint-initdb.d/init.sql"
-      - "./data/clickhouse/data:/var/lib/clickhouse/data"
-      - "./data/clickhouse/metadata:/var/lib/clickhouse/metadata"
+      - "./clickhouse-config.d/macros_node1.xml:/etc/clickhouse-server/config.d/macros.xml"
+      - "./clickhouse-config.d/zookeeper.xml:/etc/clickhouse-server/config.d/zookeeper.xml"
+      - "./init_replicated.sql:/docker-entrypoint-initdb.d/init.sql"
+      - "./data/clickhouse1/data:/var/lib/clickhouse/data"
+      - "./data/clickhouse1/metadata:/var/lib/clickhouse/metadata"
     ports:
       - "8001:8001" # prometheus /metrics endpoint
+    links:
+      - zoo1
+      - zoo2
+      - zoo3
+
+  clickhouse2:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - "./clickhouse-config.d/rollup.xml:/etc/clickhouse-server/config.d/rollup.xml"
+      - "./clickhouse-config.d/prometheus.xml:/etc/clickhouse-server/config.d/prometheus.xml"
+      - "./clickhouse-config.d/macros_node2.xml:/etc/clickhouse-server/config.d/macros.xml"
+      - "./clickhouse-config.d/zookeeper.xml:/etc/clickhouse-server/config.d/zookeeper.xml"
+      - "./init_replicated.sql:/docker-entrypoint-initdb.d/init.sql"
+      - "./data/clickhouse2/data:/var/lib/clickhouse/data"
+      - "./data/clickhouse2/metadata:/var/lib/clickhouse/metadata"
+    ports:
+      - "8002:8001" # prometheus /metrics endpoint
+    links:
+      - zoo1
+      - zoo2
+      - zoo3
 
   carbon-clickhouse:
     image: lomik/carbon-clickhouse:v0.10.2
@@ -23,7 +46,8 @@ services:
     - "2004:2004" # pickle
     - "2006:2006" # prometheus remote write
     links:
-    - clickhouse
+    - clickhouse1
+    - clickhouse2
 
   graphite-clickhouse:
     image: lomik/graphite-clickhouse:v0.11.1
@@ -31,7 +55,8 @@ services:
     - "./clickhouse-config.d/rollup.xml:/etc/graphite-clickhouse/rollup.xml"
     - "./graphite-clickhouse.conf:/etc/graphite-clickhouse/graphite-clickhouse.conf"
     links:
-    - clickhouse
+    - clickhouse1
+    - clickhouse2
 
   carbonapi:
     # image: carbonapi:latest
